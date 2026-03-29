@@ -1,0 +1,36 @@
+# Environment
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.so
+
+# Data & Logs (generated at runtime)
+data/*.csv
+data/*.parquet
+data/*.json
+logs/
+airflow/logs/
+/tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docker volumes
+postgres_data/
+
+# Airflow
+airflow/plugins/__pycache__/
