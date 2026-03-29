@@ -1,0 +1,105 @@
+# ============================================================
+# Enterprise ETL Platform - Customer Data Pipeline Configuration
+# ============================================================
+# Pipeline: customer_data_pipeline
+# Schedule: Daily at midnight UTC
+# Owner: data-engineering-team
+# ============================================================
+
+pipeline_name: customer_data_pipeline
+description: "Ingest, clean, and load customer records from CSV source to PostgreSQL"
+owner: etl-team
+schedule: "@daily"
+tags:
+  - customer
+  - csv
+  - production
+dynamic_dag: false  # Handled by dedicated DAG file
+
+# ── Source Configuration ───────────────────────────────────
+source:
+  type: csv
+  name: customer_csv_source
+  path: /opt/etl/data/sample_customers.csv
+  encoding: utf-8
+  separator: ","
+  date_columns:
+    - signup_date
+    - last_login
+
+# ── Transformation Rules ───────────────────────────────────
+transformations:
+  - name: remove_duplicates
+    config:
+      subset:
+        - email
+
+  - name: fill_missing
+    config:
+      strategy: constant
+      fill_value: "UNKNOWN"
+      columns:
+        - first_name
+        - last_name
+        - city
+        - country
+
+  - name: normalize_text
+    config:
+      lowercase: false
+      strip: true
+      columns:
+        - first_name
+        - last_name
+        - city
+        - country
+
+  - name: validate_email
+    config:
+      column: email
+      action: nullify
+
+  - name: cast_types
+    config:
+      mappings:
+        age: int
+        signup_date: datetime
+        last_login: datetime
+      errors: coerce
+
+  - name: add_audit_columns
+
+# ── Destination Configuration ──────────────────────────────
+destination:
+  type: postgresql
+  table: clean_customers
+  schema: public
+  mode: append
+  chunksize: 5000
+
+# ── Data Quality Configuration ─────────────────────────────
+quality_threshold: 0.80
+
+quality:
+  max_null_ratio: 0.20
+  max_duplicate_ratio: 0.02
+  min_records: 5
+  required_columns:
+    - email
+  unique_keys:
+    - email
+  regex_checks:
+    - column: email
+      pattern: "^[\\w.+-]+@[\\w-]+\\.[\\w.]+$"
+  range_checks:
+    - column: age
+      min: 0
+      max: 120
+
+# ── Incremental Load Settings ──────────────────────────────
+incremental: false
+
+# ── Retry / Execution Settings ─────────────────────────────
+retries: 3
+retry_delay_minutes: 5
+depends_on_past: false

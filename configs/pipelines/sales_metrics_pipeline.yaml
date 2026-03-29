@@ -1,0 +1,89 @@
+# ============================================================
+# Enterprise ETL Platform - Sales Metrics Pipeline Config
+# ============================================================
+
+pipeline_name: sales_metrics_pipeline
+description: "Incremental daily aggregation of sales transactions into metrics table"
+owner: etl-team
+schedule: "0 1 * * *"   # 01:00 UTC daily
+tags:
+  - sales
+  - incremental
+  - postgresql
+
+# ── Source ─────────────────────────────────────────────────
+source:
+  type: postgresql
+  name: sales_source_db
+  # connection_string is injected at runtime from env
+  query: "SELECT * FROM raw_sales WHERE created_at > :checkpoint ORDER BY created_at ASC"
+  incremental: true
+  checkpoint_column: created_at
+
+# ── Transformations ────────────────────────────────────────
+transformations:
+  - name: remove_duplicates
+    config:
+      subset:
+        - order_id
+
+  - name: fill_missing
+    config:
+      strategy: constant
+      fill_value: 0
+      columns:
+        - discount_amount
+        - tax_amount
+
+  - name: cast_types
+    config:
+      mappings:
+        amount: float
+        quantity: int
+        created_at: datetime
+      errors: coerce
+
+  - name: aggregate_daily
+    config:
+      date_column: created_at
+      group_by:
+        - created_at
+        - product_category
+        - region
+      agg_config:
+        amount: sum
+        quantity: sum
+        order_id: count
+
+  - name: add_audit_columns
+
+# ── Destination ────────────────────────────────────────────
+destination:
+  type: postgresql
+  table: sales_metrics
+  schema: public
+  mode: upsert
+  upsert_key:
+    - created_at
+    - product_category
+    - region
+
+# ── Quality ────────────────────────────────────────────────
+quality_threshold: 0.90
+
+quality:
+  max_null_ratio: 0.05
+  max_duplicate_ratio: 0.01
+  min_records: 1
+  required_columns:
+    - created_at
+    - amount
+  range_checks:
+    - column: amount
+      min: 0
+
+# ── Incremental ────────────────────────────────────────────
+incremental: true
+
+retries: 3
+retry_delay_minutes: 10
